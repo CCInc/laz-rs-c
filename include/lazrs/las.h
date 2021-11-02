@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LAS_HEADER_SIZE 227
+#define LAS_HEADER_SIZE 375
 #define LAS_VLR_HEADER_SIZE 54
 
 typedef struct {
@@ -27,10 +27,18 @@ typedef struct {
   uint8_t version_minor;
   uint64_t point_count;
   uint16_t point_size;
+  uint8_t point_format;
   uint32_t offset_to_point_data;
 
   uint32_t number_of_vlrs;
   las_vlr *vlrs;
+
+  double min_x;
+  double min_y;
+  double min_z;
+  double max_x;
+  double max_y;
+  double max_z;
 } las_header;
 
 void las_clean_header(las_header *header) {
@@ -53,7 +61,13 @@ las_error fread_las_header(FILE *file, las_header *header) {
   }
 
   uint8_t raw_header[LAS_HEADER_SIZE];
-  size_t num_read = fread(raw_header, sizeof(uint8_t), LAS_HEADER_SIZE, file);
+
+  fseek(file, 94, SEEK_SET);
+  uint16_t header_len;
+  fread(&header_len, sizeof(uint16_t), 1, file);
+  fseek(file, 0, SEEK_SET);
+
+  size_t num_read = fread(raw_header, sizeof(uint8_t), header_len, file);
   if (num_read < LAS_HEADER_SIZE && ferror(file) != 0) {
     return las_error_io;
   }
@@ -69,15 +83,25 @@ las_error fread_las_header(FILE *file, las_header *header) {
   header->version_minor = raw_header[25];
   header->offset_to_point_data = *(uint32_t *)(raw_header + 96);
   header->number_of_vlrs = *(uint32_t *)(raw_header + 100);
+  header->point_format = raw_header[103];
   header->point_size = *(uint16_t *)(raw_header + 105);
   header->point_count = *(uint32_t *)(raw_header + 107);
+  if (header->version_minor == 4)
+    header->point_count = *(uint64_t *)(raw_header + 247);
+
+  header->max_x = *(double *)(raw_header + 179);
+  header->min_x = *(double *)(raw_header + 187);
+  header->max_y = *(double *)(raw_header + 195);
+  header->min_y = *(double *)(raw_header + 203);
+  header->max_z = *(double *)(raw_header + 211);
+  header->min_z = *(double *)(raw_header + 219);
 
   uint16_t header_size = *(uint16_t *)(raw_header + 94);
   if (fseek(file, header_size, SEEK_SET) != 0) {
     return las_error_io;
   }
 
-  header->vlrs = malloc(header->number_of_vlrs * sizeof(las_vlr));
+  header->vlrs = (las_vlr *)malloc(header->number_of_vlrs * sizeof(las_vlr));
   if (header->vlrs == NULL) {
     return las_error_oom;
   }
@@ -94,7 +118,7 @@ las_error fread_las_header(FILE *file, las_header *header) {
     memcpy(vlr->user_id, raw_vlr_header + 2, sizeof(uint8_t) * 16);
     vlr->record_id = *(uint16_t *)(raw_vlr_header + 18);
     vlr->record_len = *(uint16_t *)(raw_vlr_header + 20);
-    vlr->data = malloc(sizeof(uint8_t) * vlr->record_len);
+    vlr->data = (uint8_t *)malloc(sizeof(uint8_t) * vlr->record_len);
     if (vlr->data == NULL) {
       return las_error_oom;
     }
@@ -105,7 +129,7 @@ las_error fread_las_header(FILE *file, las_header *header) {
     }
   }
 
-  //  fseek(file, header->offset_to_point_data, SEEK_SET);
+  fseek(file, header->offset_to_point_data, SEEK_SET);
 
   return las_error_ok;
 }

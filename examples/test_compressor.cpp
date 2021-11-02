@@ -1,5 +1,5 @@
-#include <lazrs/lazrs.h>
-#include <lazrs/las.h>
+#include <lazrs.h>
+#include <las.h>
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
@@ -23,7 +23,9 @@ int main(int argc, char *argv[]) {
   las_header header;
   if (fread_las_header(las_file, &header) != las_error_ok)
   {
-    goto end;
+    fclose(file);
+    fclose(las_file);
+    return EXIT_FAILURE;
   }
 
 
@@ -31,7 +33,7 @@ int main(int argc, char *argv[]) {
   LazrsResult result =
       lazrs_compressor_new_for_point_format(&compressor, file, 3, 0);
 
-  if (result != LAZRS_OK) {
+  if (result != LazrsResult::LAZRS_OK) {
     goto end;
   }
 
@@ -40,5 +42,5 @@ end:
   lazrs_compressor_delete(compressor);
   fclose(file);
   fclose(las_file);
-  return (result == LAZRS_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
+  return (result == LazrsResult::LAZRS_OK) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

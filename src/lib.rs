@@ -66,6 +66,10 @@ pub struct LasZipDecompressor {
     decompressor: laz::LasZipDecompressor<'static, CSource<'static>>,
 }
 
+pub struct ParLasZipDecompressor {
+    decompressor: laz::ParLasZipDecompressor<CSource<'static>>,
+}
+
 /// Creates a new decompressor that decompresses data from the given file
 ///
 /// If an error occurs, the returned result will be something other that LAZRS_OK
@@ -98,6 +102,39 @@ pub unsafe extern "C" fn lazrs_decompressor_new_file(
         }
         Err(error) => {
             *decompressor = std::ptr::null_mut::<LasZipDecompressor>();
+            error.into()
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lazrs_pardecompressor_new_file(
+    decompressor: *mut *mut ParLasZipDecompressor,
+    fh: *mut libc::FILE,
+    laszip_vlr_record_data: *const u8,
+    record_data_len: u16,
+) -> LazrsResult {
+    if decompressor.is_null() || fh.is_null() {
+        return LazrsResult::LAZRS_OTHER;
+    }
+
+    let vlr_data = std::slice::from_raw_parts(laszip_vlr_record_data, usize::from(record_data_len));
+    let vlr = match laz::LazVlr::from_buffer(vlr_data) {
+        Ok(vlr) => vlr,
+        Err(error) => {
+            return error.into();
+        }
+    };
+
+    let cfile = CFile::new_unchecked(fh);
+
+    match laz::ParLasZipDecompressor::new(CSource::File(cfile), vlr) {
+        Ok(d) => {
+            *decompressor = Box::into_raw(Box::new(ParLasZipDecompressor { decompressor: d }));
+            LazrsResult::LAZRS_OK
+        }
+        Err(error) => {
+            *decompressor = std::ptr::null_mut::<ParLasZipDecompressor>();
             error.into()
         }
     }
@@ -149,6 +186,13 @@ pub unsafe extern "C" fn lazrs_delete_decompressor(decompressor: *mut LasZipDeco
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn lazrs_delete_pardecompressor(decompressor: *mut ParLasZipDecompressor) {
+    if !decompressor.is_null() {
+        Box::from_raw(decompressor);
+    }
+}
+
 /// Decompresses one point from the input and write its LAS data to the out buffer
 ///
 /// @decompressor: the decompressor, must not be NULL
@@ -174,6 +218,18 @@ pub unsafe extern "C" fn lazrs_decompress_one(
 #[no_mangle]
 pub unsafe extern "C" fn lazrs_decompress_many(
     decompressor: *mut LasZipDecompressor,
+    out: *mut u8,
+    len: libc::size_t,
+) -> LazrsResult {
+    debug_assert!(!decompressor.is_null());
+    debug_assert!(!out.is_null());
+    let buf = std::slice::from_raw_parts_mut(out, len);
+    (*decompressor).decompressor.decompress_many(buf).into()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn lazrs_pardecompress_many(
+    decompressor: *mut ParLasZipDecompressor,
     out: *mut u8,
     len: libc::size_t,
 ) -> LazrsResult {
