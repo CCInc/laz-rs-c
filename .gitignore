@@ -5,3 +5,4 @@ Cargo.lock
 cmake-build-*
 lazrs.h
 lazrs/target
+build/

@@ -11,13 +11,23 @@ FetchContent_MakeAvailable(Corrosion)
 corrosion_import_crate(
         MANIFEST_PATH Cargo.toml
 )
-target_include_directories(laz-rs-c INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include")
+target_include_directories(laz-rs-c INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
 
 option(PARALLEL_FEATURE "Build laz-rs with parallel capabilities" OFF)
 
 if (PARALLEL_FEATURE)
     corrosion_set_features(laz-rs-c
         FEATURES
-            PARALLEL
+            parallel
     )
 endif()
+
+install(DIRECTORY include/lazrs DESTINATION include)
+install(TARGETS laz-rs-c EXPORT laz-rs-c-targets
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION lib)
+install(EXPORT laz-rs-c-targets DESTINATION lib/cmake/laz-rs-c)
